@@ -408,7 +408,7 @@ async function getCorpCode(apiKey, company) {
 
 async function searchCorpCode(apiKey, company) {
   // DART 기업검색 API
-  const r = await dartGet('corpSearch.json', {
+  const r = await dartGet('corpSearch.json?corp_name=', {
     crtfc_key: apiKey,
     corp_name: company,
     page_count: 10
