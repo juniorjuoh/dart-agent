@@ -399,10 +399,12 @@ async function searchCorpCode(apiKey, company) {
 
   // JSZip으로 ZIP 파일 파싱 → CORPCODE.xml 추출
   const zip = await JSZip.loadAsync(buf);
-  const xmlFile = zip.file('CORPCODE.xml');
-  if (!xmlFile) throw new Error('CORPCODE.xml을 찾을 수 없습니다');
+  // ZIP 내 파일명 대소문자 무관하게 검색
+  const fileNames = Object.keys(zip.files);
+  const xmlFileName = fileNames.find(n => n.toLowerCase().includes('corpcode'));
+  if (!xmlFileName) throw new Error('CORPCODE.xml을 찾을 수 없습니다. 파일 목록: ' + fileNames.join(', '));
 
-  const xmlText = await xmlFile.async('string');
+  const xmlText = await zip.files[xmlFileName].async('string');
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, 'text/xml');
   const corps = Array.from(doc.querySelectorAll('list'));
