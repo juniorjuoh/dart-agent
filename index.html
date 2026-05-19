@@ -410,41 +410,82 @@ async function dartGet(path, params) {
   return r;
 }
 
-async function searchCorpCode(apiKey, company) {
-  log(`기업코드 ZIP 다운로드 중... (수 초 소요)`, 'dim');
-  const dartUrl = `${DART}/corpCode.xml?crtfc_key=${apiKey}`;
-  const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
+// ZIP 캐시 — 매번 다운로드 방지
+let _corpCache = null;
+
+async function loadCorpList(apiKey) {
+  if (_corpCache) return _corpCache;
+  log('기업코드 ZIP 다운로드 중... (최초 1회)', 'dim');
+  const dartUrl = DART + '/corpCode.xml?crtfc_key=' + apiKey;
+  const proxyUrl = PROXY + '/?url=' + encodeURIComponent(dartUrl);
   const r = await fetch(proxyUrl);
-  if (!r.ok) throw new Error(`기업코드 다운로드 실패 (${r.status})`);
-
+  if (!r.ok) throw new Error('기업코드 다운로드 실패 (' + r.status + ')');
   const buf = await r.arrayBuffer();
-
-  // JSZip으로 ZIP 파일 파싱 → CORPCODE.xml 추출
   const zip = await JSZip.loadAsync(buf);
-  // ZIP 내 파일명 대소문자 무관하게 검색
   const fileNames = Object.keys(zip.files);
   const xmlFileName = fileNames.find(n => n.toLowerCase().includes('corpcode'));
-  if (!xmlFileName) throw new Error('CORPCODE.xml을 찾을 수 없습니다. 파일 목록: ' + fileNames.join(', '));
-
+  if (!xmlFileName) throw new Error('CORPCODE.xml을 찾을 수 없습니다');
   const xmlText = await zip.files[xmlFileName].async('string');
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, 'text/xml');
-  const corps = Array.from(doc.querySelectorAll('list'));
-  log(`전체 ${corps.length.toLocaleString()}개 기업 로드 완료`, 'dim');
+  _corpCache = Array.from(doc.querySelectorAll('list')).map(c => ({
+    corp_code:  c.querySelector('corp_code')?.textContent || '',
+    corp_name:  c.querySelector('corp_name')?.textContent || '',
+    stock_code: c.querySelector('stock_code')?.textContent?.trim() || '',
+  }));
+  log('전체 ' + _corpCache.length.toLocaleString() + '개 기업 로드 완료', 'dim');
+  return _corpCache;
+}
 
-  const exact   = corps.filter(c => c.querySelector('corp_name')?.textContent === company);
-  const partial = corps.filter(c => c.querySelector('corp_name')?.textContent.includes(company));
-  const candidates = exact.length ? exact : partial;
+async function searchCorpCode(apiKey, company) {
+  const corps = await loadCorpList(apiKey);
+  const exact   = corps.filter(c => c.corp_name === company);
+  const partial = corps.filter(c => c.corp_name.includes(company));
+  const candidates = (exact.length ? exact : partial).slice(0, 10);
 
-  if (candidates.length === 0) throw new Error(`"${company}" 기업을 찾을 수 없습니다`);
+  if (candidates.length === 0) throw new Error('"' + company + '" 기업을 찾을 수 없습니다');
 
-  const listed = candidates.find(c => c.querySelector('stock_code')?.textContent.trim());
-  const chosen = listed || candidates[0];
-  const name  = chosen.querySelector('corp_name').textContent;
-  const code  = chosen.querySelector('corp_code').textContent;
-  const stock = chosen.querySelector('stock_code')?.textContent.trim() || '비상장';
-  log(`기업 확인: ${name} (코드: ${code}, 종목: ${stock})`, 'ok');
-  return code;
+  // 1개면 바로 사용
+  if (candidates.length === 1) {
+    const c = candidates[0];
+    log('기업 확인: ' + c.corp_name + ' (코드: ' + c.corp_code + ', 종목: ' + (c.stock_code || '비상장') + ')', 'ok');
+    return c.corp_code;
+  }
+
+  // 여러 개면 선택 팝업
+  return new Promise((resolve, reject) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:12px;padding:1.5rem;min-width:360px;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.3)';
+    let html = '<div style="font-size:14px;font-weight:600;margin-bottom:4px;color:#1a1f2e">"' + company + '" 검색 결과 ' + candidates.length + '개</div>';
+    html += '<div style="font-size:12px;color:#6B7280;margin-bottom:16px">해당하는 기업을 선택해 주세요</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto" id="corpPickList"></div>';
+    html += '<button id="corpPickCancel" style="margin-top:14px;width:100%;padding:8px;border:1px solid #E2E6EC;border-radius:7px;background:#F7F8FA;cursor:pointer;font-size:13px">취소</button>';
+    box.innerHTML = html;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const list = box.querySelector('#corpPickList');
+    candidates.forEach(function(c) {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #E2E6EC;border-radius:7px;background:#fff;cursor:pointer;text-align:left;width:100%';
+      btn.innerHTML = '<span style="font-size:13px;font-weight:500;color:#1a1f2e">' + c.corp_name + '</span><span style="font-size:11px;color:#6B7280">' + (c.stock_code ? '상장 · ' + c.stock_code : '비상장') + ' · ' + c.corp_code + '</span>';
+      btn.onmouseover = function() { btn.style.background = '#EFF6FF'; };
+      btn.onmouseout  = function() { btn.style.background = '#fff'; };
+      btn.onclick = function() {
+        overlay.remove();
+        log('기업 선택: ' + c.corp_name + ' (코드: ' + c.corp_code + ', 종목: ' + (c.stock_code || '비상장') + ')', 'ok');
+        resolve(c.corp_code);
+      };
+      list.appendChild(btn);
+    });
+
+    box.querySelector('#corpPickCancel').onclick = function() {
+      overlay.remove();
+      reject(new Error('기업 선택 취소'));
+    };
+  });
 }
 
 async function fetchYear(apiKey, corpCode, year, fsDiv) {
