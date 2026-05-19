@@ -163,11 +163,11 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
       <div class="section-label">DART API 키</div>
       <div class="input-group">
         <div style="display:flex;gap:6px">
-          <input type="password" id="apiKey" placeholder="API 키 입력 (40자리)" style="flex:1"/>
+          <input type="password" id="apiKey" placeholder="API 키 입력 (40자리)" style="flex:1" oninput="saveApiKey(this.value)"/>
           <button onclick="toggleKey()" style="padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px" id="eyeBtn">👁</button>
         </div>
         <div style="font-size:11px;color:var(--muted)">
-          <a href="https://opendart.fss.or.kr" target="_blank" style="color:var(--navy2)">opendart.fss.or.kr</a>에서 무료 발급
+          <a href="https://opendart.fss.or.kr" target="_blank" style="color:var(--navy2)">opendart.fss.or.kr</a>에서 무료 발급 · <span id="saveStatus" style="color:var(--success)"></span>
         </div>
       </div>
     </div>
@@ -338,6 +338,28 @@ async function checkWorker() {
     document.getElementById('workerStatus').style.color = 'var(--warn)';
   }
 }
+// ── localStorage API 키 저장/불러오기
+function saveApiKey(val) {
+  if (val.trim()) {
+    localStorage.setItem('dart_api_key', val.trim());
+    document.getElementById('saveStatus').textContent = '✓ 저장됨';
+    setTimeout(() => { document.getElementById('saveStatus').textContent = ''; }, 2000);
+  } else {
+    localStorage.removeItem('dart_api_key');
+  }
+}
+
+function loadApiKey() {
+  const saved = localStorage.getItem('dart_api_key');
+  if (saved) {
+    document.getElementById('apiKey').value = saved;
+    document.getElementById('saveStatus').textContent = '✓ 불러옴';
+    setTimeout(() => { document.getElementById('saveStatus').textContent = ''; }, 2000);
+  }
+}
+
+// 페이지 로드 시 저장된 키 자동 불러오기
+loadApiKey();
 checkWorker();
 
 // ── UI 헬퍼
