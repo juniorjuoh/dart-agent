@@ -407,22 +407,38 @@ async function getCorpCode(apiKey, company) {
 }
 
 async function searchCorpCode(apiKey, company) {
-  // DART 기업검색 API
-  const r = await dartGet('corpSearch.json?corp_name=', {
-    crtfc_key: apiKey,
-    corp_name: company,
-    page_count: 10
-  });
-  const data = await r.json();
-  if (data.status !== '000') throw new Error(data.message || '기업 검색 실패');
-  const list = data.corp_list || [];
-  if (list.length === 0) throw new Error(`"${company}" 검색 결과 없음`);
-  // 상장사 우선, 정확히 일치 우선
-  const exact = list.find(c => c.corp_name === company && c.stock_code);
-  const listed = list.find(c => c.stock_code);
-  const chosen = exact || listed || list[0];
-  log(`기업 확인: ${chosen.corp_name} (코드: ${chosen.corp_code}, 종목: ${chosen.stock_code || '비상장'})`, 'ok');
-  return chosen.corp_code;
+  log(`기업코드 ZIP 다운로드 중...`, 'dim');
+  const dartUrl = `${DART}/corpCode.xml?crtfc_key=${apiKey}`;
+  const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
+  const r = await fetch(proxyUrl);
+  if (!r.ok) throw new Error(`기업코드 다운로드 실패 (${r.status})`);
+
+  const buf = await r.arrayBuffer();
+
+  // XLSX.js로 ZIP 내 CORPCODE.xml 추출
+  const zip = XLSX.CFB.read(new Uint8Array(buf), { type: 'array' });
+  const xmlEntry = zip.find(e => e.name && e.name.includes('CORPCODE'));
+  if (!xmlEntry) throw new Error('CORPCODE.xml을 찾을 수 없습니다');
+
+  const xmlText = new TextDecoder('utf-8').decode(xmlEntry.content);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const corps = Array.from(doc.querySelectorAll('list'));
+
+  const exact   = corps.filter(c => c.querySelector('corp_name')?.textContent === company);
+  const partial = corps.filter(c => c.querySelector('corp_name')?.textContent.includes(company));
+  const candidates = exact.length ? exact : partial;
+
+  if (candidates.length === 0) throw new Error(`"${company}" 기업을 찾을 수 없습니다`);
+
+  // 상장사 우선
+  const listed = candidates.find(c => c.querySelector('stock_code')?.textContent.trim());
+  const chosen = listed || candidates[0];
+  const name   = chosen.querySelector('corp_name').textContent;
+  const code   = chosen.querySelector('corp_code').textContent;
+  const stock  = chosen.querySelector('stock_code')?.textContent.trim() || '비상장';
+  log(`기업 확인: ${name} (코드: ${code}, 종목: ${stock})`, 'ok');
+  return code;
 }
 
 async function fetchYear(apiKey, corpCode, year, fsDiv) {
