@@ -466,16 +466,25 @@ async function fetchYear(apiKey, corpCode, year, fsDiv) {
     return {};
   }
   const result = {};
-  for (const item of (data.list || [])) {
+  const list = data.list || [];
+  for (const item of list) {
     const nm  = (item.account_nm || '').trim().replace(/\s+/g, '');
     const sj  = (item.sj_div || '').trim();
     const raw = (item.thstrm_amount || '').replace(/,/g, '').trim();
     const val = parseFloat(raw);
     if (!isNaN(val)) {
-      // 같은 계정명이 여러 재무제표에 있을 수 있으므로 sj_div 포함 키로 저장
-      result[nm] = Math.round(val / 1e8 * 10) / 10; // 억원
-      result[sj + '_' + nm] = Math.round(val / 1e8 * 10) / 10; // sj_div 접두 키도 저장
+      result[nm] = Math.round(val / 1e8 * 10) / 10;
+      result[sj + '_' + nm] = Math.round(val / 1e8 * 10) / 10;
     }
+  }
+  // 별도(OFS) 디버그: 주요 계정명 로그 출력
+  if (fsDiv === 'OFS' && list.length > 0) {
+    const keyAccounts = list
+      .filter(i => ['BS','IS','CF'].includes(i.sj_div))
+      .slice(0, 20)
+      .map(i => `[${i.sj_div}] ${i.account_nm}`)
+      .join(' | ');
+    log(`  OFS 계정 샘플: ${keyAccounts}`, 'dim');
   }
   return result;
 }
