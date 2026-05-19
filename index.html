@@ -133,6 +133,19 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
 .empty-title { font-size: 14px; font-weight: 500; color: var(--text); }
 .empty-desc { font-size: 12px; line-height: 1.6; }
 
+.autocomplete-wrap { position: relative; }
+.autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--card);
+  border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 999; max-height: 220px; overflow-y: auto; margin-top: 3px; }
+.ac-item { padding: 8px 10px; cursor: pointer; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; transition: background .1s; }
+.ac-item:hover, .ac-item.selected { background: #EFF6FF; }
+.ac-name { font-size: 13px; color: var(--text); font-weight: 500; }
+.ac-badge { font-size: 10px; padding: 2px 6px; border-radius: 99px; white-space: nowrap; flex-shrink: 0; }
+.ac-badge.listed { background: #DBEAFE; color: #1E40AF; }
+.ac-badge.unlisted { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+.ac-empty { padding: 10px; font-size: 12px; color: var(--muted); text-align: center; }
+
 
 /* 반응형 */
 @media (max-width: 768px) {
@@ -195,7 +208,11 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
 
     <div>
       <div class="section-label">회사명</div>
-      <input type="text" id="company" placeholder="예: 삼성전자, 미래엔..." />
+      <div class="autocomplete-wrap">
+        <input type="text" id="company" placeholder="회사명 입력 (2글자 이상)"
+          autocomplete="off" oninput="onCompanyInput(this.value)" onblur="hideAcList()" onfocus="onCompanyInput(this.value)"/>
+        <div class="autocomplete-list" id="acList" style="display:none"></div>
+      </div>
     </div>
 
     <div>
@@ -345,6 +362,80 @@ async function checkWorker() {
     document.getElementById('workerStatus').style.color = 'var(--warn)';
   }
 }
+// ── 회사명 자동완성
+let _acTimer = null;
+let _acIdx = -1;
+
+function onCompanyInput(val) {
+  clearTimeout(_acTimer);
+  if (!val || val.length < 2) { hideAcList(); return; }
+  _acTimer = setTimeout(() => searchAc(val), 180);
+}
+
+async function searchAc(val) {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) {
+    showAcList([{corp_name:'API 키를 먼저 입력해 주세요', corp_code:'', stock_code:'', disabled:true}]);
+    return;
+  }
+  try {
+    const corps = await loadCorpList(apiKey);
+    const kw = val.replace(/\s/g, '');
+    const exact   = corps.filter(c => c.corp_name === val);
+    const starts  = corps.filter(c => c.corp_name !== val && c.corp_name.startsWith(val));
+    const partial = corps.filter(c => c.corp_name !== val && !c.corp_name.startsWith(val) && c.corp_name.replace(/\s/g,'').includes(kw));
+    const results = [...exact, ...starts, ...partial].slice(0, 10);
+    if (results.length === 0) {
+      showAcList([{corp_name:'검색 결과가 없습니다', corp_code:'', stock_code:'', disabled:true}]);
+    } else {
+      showAcList(results);
+    }
+  } catch(e) {
+    hideAcList();
+  }
+}
+
+function showAcList(items) {
+  const list = document.getElementById('acList');
+  list.innerHTML = '';
+  _acIdx = -1;
+  items.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'ac-item';
+    if (item.disabled) {
+      div.innerHTML = '<span class="ac-empty">' + item.corp_name + '</span>';
+    } else {
+      const badge = item.stock_code
+        ? '<span class="ac-badge listed">상장 · ' + item.stock_code + '</span>'
+        : '<span class="ac-badge unlisted">비상장</span>';
+      div.innerHTML = '<span class="ac-name">' + item.corp_name + '</span>' + badge;
+      div.onmousedown = (e) => {
+        e.preventDefault();
+        selectAc(item);
+      };
+    }
+    list.appendChild(div);
+  });
+  list.style.display = 'block';
+}
+
+function selectAc(item) {
+  document.getElementById('company').value = item.corp_name;
+  hideAcList();
+  if (item.stock_code) {
+    log('"' + item.corp_name + '" 선택 (상장 · ' + item.stock_code + ' · ' + item.corp_code + ')', 'ok');
+  } else {
+    log('"' + item.corp_name + '" 선택 (비상장 · ' + item.corp_code + ') — IFRS 미적용 시 데이터 없을 수 있음', 'warn');
+  }
+}
+
+function hideAcList() {
+  setTimeout(() => {
+    const list = document.getElementById('acList');
+    if (list) list.style.display = 'none';
+  }, 150);
+}
+
 // ── localStorage API 키 저장/불러오기
 function saveApiKey(val) {
   if (val.trim()) {
