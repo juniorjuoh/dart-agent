@@ -445,34 +445,40 @@ async function fetchYear(apiKey, corpCode, year, fsDiv) {
   }
   const result = {};
   for (const item of (data.list || [])) {
-    const nm = (item.account_nm || '').trim().replace(/\s+/g, '');
+    const nm  = (item.account_nm || '').trim().replace(/\s+/g, '');
+    const sj  = (item.sj_div || '').trim();
     const raw = (item.thstrm_amount || '').replace(/,/g, '').trim();
     const val = parseFloat(raw);
-    if (!isNaN(val)) result[nm] = Math.round(val / 1e8 * 10) / 10; // 억원
+    if (!isNaN(val)) {
+      // 같은 계정명이 여러 재무제표에 있을 수 있으므로 sj_div 포함 키로 저장
+      result[nm] = Math.round(val / 1e8 * 10) / 10; // 억원
+      result[sj + '_' + nm] = Math.round(val / 1e8 * 10) / 10; // sj_div 접두 키도 저장
+    }
   }
   return result;
 }
 
 // ── 계정 매핑
 const IS_MAP = {
-  '매출액':           ['매출액','수익(매출액)','영업수익'],
+  '매출액':           ['매출액','수익(매출액)','영업수익','매출'],
   '매출원가':         ['매출원가'],
   '매출총이익':       ['매출총이익'],
-  '판매비와관리비':   ['판매비와관리비','판매비및관리비'],
+  '판매비와관리비':   ['판매비와관리비','판매비및관리비','판매관리비'],
   '영업이익':         ['영업이익(손실)','영업이익'],
   '이자수익':         ['이자수익'],
   '이자비용':         ['이자비용'],
-  '법인세전순이익':   ['법인세비용차감전순이익','법인세차감전순이익'],
+  '법인세전순이익':   ['법인세비용차감전순이익','법인세차감전순이익','법인세차감전당기순이익'],
   '법인세비용':       ['법인세비용'],
   '당기순이익':       ['당기순이익(손실)','당기순이익'],
-  '지배순이익':       ['지배기업의소유주에게귀속되는당기순이익','지배주주지분순이익'],
+  // 별도는 지배/비지배 구분 없으므로 당기순이익으로 폴백
+  '지배순이익':       ['지배기업의소유주에게귀속되는당기순이익','지배주주지분순이익','당기순이익(손실)','당기순이익'],
 };
 const BS_MAP = {
   '자산총계':         ['자산총계'],
   '유동자산':         ['유동자산'],
   '현금및현금성자산': ['현금및현금성자산'],
-  '단기금융상품':     ['단기금융상품','단기투자자산'],
-  '매출채권':         ['매출채권'],
+  '단기금융상품':     ['단기금융상품','단기투자자산','단기투자증권'],
+  '매출채권':         ['매출채권','매출채권및기타유동채권'],
   '재고자산':         ['재고자산'],
   '비유동자산':       ['비유동자산'],
   '유형자산':         ['유형자산'],
@@ -480,28 +486,34 @@ const BS_MAP = {
   '유동부채':         ['유동부채'],
   '비유동부채':       ['비유동부채'],
   '자본총계':         ['자본총계'],
-  '지배기업지분':     ['지배기업의소유주에게귀속되는자본','지배주주지분'],
+  // 별도는 지배기업지분 없음 → 자본총계로 폴백
+  '지배기업지분':     ['지배기업의소유주에게귀속되는자본','지배주주지분','자본총계'],
   '비지배지분':       ['비지배지분'],
   '이익잉여금':       ['이익잉여금'],
 };
 const CF_MAP = {
-  '영업활동':         ['영업활동으로인한현금흐름','영업활동현금흐름'],
+  '영업활동':         ['영업활동으로인한현금흐름','영업활동현금흐름','영업활동으로인한현금흐름(유출액)'],
   '투자활동':         ['투자활동으로인한현금흐름','투자활동현금흐름'],
   '재무활동':         ['재무활동으로인한현금흐름','재무활동현금흐름'],
-  '기말현금':         ['기말의현금및현금성자산','기말현금및현금성자산'],
-  'CAPEX':            ['유형자산의취득','유형자산취득'],
+  '기말현금':         ['기말의현금및현금성자산','기말현금및현금성자산','기말현금'],
+  'CAPEX':            ['유형자산의취득','유형자산취득','유형자산의증가'],
 };
 
-function find(yd, keys) {
+// sj_div 기반으로 저장 — 재무제표 종류별로 분리해서 매핑 정확도 향상
+function find(yd, keys, sjFilter=null) {
   for (const k of keys) {
     const kc = k.replace(/\s+/g,'');
-    for (const [nm, val] of Object.entries(yd)) {
+    for (const [nm, entry] of Object.entries(yd)) {
+      // entry가 {val, sj} 형태이면 sj 필터 적용
+      const val = (entry && typeof entry === 'object' && 'val' in entry) ? entry.val : entry;
+      const sj  = (entry && typeof entry === 'object' && 'sj'  in entry) ? entry.sj  : null;
+      if (sjFilter && sj && !sjFilter.includes(sj)) continue;
       if (nm.includes(kc)) return val;
     }
   }
   return null;
 }
-function row(data, years, keys) { return years.map(y => find(data[y]||{}, keys)); }
+function row(data, years, keys, sjFilter=null) { return years.map(y => find(data[y]||{}, keys, sjFilter)); }
 function ratio(a, b) { return (a != null && b && b !== 0) ? Math.round(a/b*10000)/10000 : null; }
 
 // ── 엑셀 스타일 상수
