@@ -133,6 +133,7 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
 .empty-title { font-size: 14px; font-weight: 500; color: var(--text); }
 .empty-desc { font-size: 12px; line-height: 1.6; }
 
+
 /* 반응형 */
 @media (max-width: 768px) {
   .layout { grid-template-columns: 1fr; }
@@ -153,7 +154,13 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
       <div class="topbar-sub">finagent101.pages.dev</div>
     </div>
   </div>
-  <div class="status-dot" id="workerDot" title="Worker 연결 상태"></div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+      <span style="font-size:11px;color:rgba(255,255,255,0.75);background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:99px">DART API 재무제표는 IFRS 적용 법인만 제공</span>
+      <span style="font-size:10px;color:rgba(255,255,255,0.5)">상장법인(유가증권, 코스닥) 및 주요 비상장법인(사업보고서 제출대상 &amp; IFRS 적용)</span>
+    </div>
+    <div class="status-dot" id="workerDot" title="Worker 연결 상태"></div>
+  </div>
 </div>
 
 <div class="layout">
