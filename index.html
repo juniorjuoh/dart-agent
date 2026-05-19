@@ -307,6 +307,7 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const PROXY = 'https://dart-proxy.dhtjdwn511.workers.dev';
 const DART  = 'https://opendart.fss.or.kr/api';
@@ -387,27 +388,8 @@ async function dartGet(path, params) {
   return r;
 }
 
-async function getCorpCode(apiKey, company) {
-  log(`기업코드 조회 중: "${company}"`, 'info');
-  const dartUrl = `${DART}/corpCode.xml?crtfc_key=${apiKey}`;
-  const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
-  const r = await fetch(proxyUrl);
-  if (!r.ok) throw new Error('기업코드 ZIP 다운로드 실패');
-
-  const buf = await r.arrayBuffer();
-  const zip = new Uint8Array(buf);
-
-  // ZIP 파싱 (내장 DecompressionStream 사용)
-  const ds = new DecompressionStream('deflate-raw');
-  // XLSX.js의 ZIP 파서 활용
-  const wb = XLSX.read(buf, { type: 'array' });
-  // wb로는 안됨 → JSZip 없이 직접 ZIP 파싱
-  // 대신 DART 검색 API 사용
-  throw new Error('__USE_SEARCH__');
-}
-
 async function searchCorpCode(apiKey, company) {
-  log(`기업코드 ZIP 다운로드 중...`, 'dim');
+  log(`기업코드 ZIP 다운로드 중... (수 초 소요)`, 'dim');
   const dartUrl = `${DART}/corpCode.xml?crtfc_key=${apiKey}`;
   const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
   const r = await fetch(proxyUrl);
@@ -415,15 +397,16 @@ async function searchCorpCode(apiKey, company) {
 
   const buf = await r.arrayBuffer();
 
-  // XLSX.js로 ZIP 내 CORPCODE.xml 추출
-  const zip = XLSX.CFB.read(new Uint8Array(buf), { type: 'array' });
-  const xmlEntry = zip.find(e => e.name && e.name.includes('CORPCODE'));
-  if (!xmlEntry) throw new Error('CORPCODE.xml을 찾을 수 없습니다');
+  // JSZip으로 ZIP 파일 파싱 → CORPCODE.xml 추출
+  const zip = await JSZip.loadAsync(buf);
+  const xmlFile = zip.file('CORPCODE.xml');
+  if (!xmlFile) throw new Error('CORPCODE.xml을 찾을 수 없습니다');
 
-  const xmlText = new TextDecoder('utf-8').decode(xmlEntry.content);
+  const xmlText = await xmlFile.async('string');
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, 'text/xml');
   const corps = Array.from(doc.querySelectorAll('list'));
+  log(`전체 ${corps.length.toLocaleString()}개 기업 로드 완료`, 'dim');
 
   const exact   = corps.filter(c => c.querySelector('corp_name')?.textContent === company);
   const partial = corps.filter(c => c.querySelector('corp_name')?.textContent.includes(company));
@@ -431,12 +414,11 @@ async function searchCorpCode(apiKey, company) {
 
   if (candidates.length === 0) throw new Error(`"${company}" 기업을 찾을 수 없습니다`);
 
-  // 상장사 우선
   const listed = candidates.find(c => c.querySelector('stock_code')?.textContent.trim());
   const chosen = listed || candidates[0];
-  const name   = chosen.querySelector('corp_name').textContent;
-  const code   = chosen.querySelector('corp_code').textContent;
-  const stock  = chosen.querySelector('stock_code')?.textContent.trim() || '비상장';
+  const name  = chosen.querySelector('corp_name').textContent;
+  const code  = chosen.querySelector('corp_code').textContent;
+  const stock = chosen.querySelector('stock_code')?.textContent.trim() || '비상장';
   log(`기업 확인: ${name} (코드: ${code}, 종목: ${stock})`, 'ok');
   return code;
 }
