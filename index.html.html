@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DART 재무제표 에이전트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #1F4E79;
+  --navy2: #2E75B6;
+  --navy3: #305496;
+  --bg: #F7F8FA;
+  --card: #FFFFFF;
+  --border: #E2E6EC;
+  --text: #1a1f2e;
+  --muted: #6B7280;
+  --accent: #0EA5E9;
+  --success: #10B981;
+  --warn: #F59E0B;
+  --danger: #EF4444;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans KR', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── 헤더 ── */
+.topbar { background: var(--navy); padding: 0 2rem; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.topbar-logo { width: 28px; height: 28px; background: rgba(255,255,255,0.15); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.topbar-logo svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2; }
+.topbar-title { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: -0.3px; }
+.topbar-sub { font-size: 12px; color: rgba(255,255,255,0.5); font-family: var(--mono); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #10B981; box-shadow: 0 0 6px #10B981; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── 레이아웃 ── */
+.layout { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 56px); }
+
+/* ── 사이드바 ── */
+.sidebar { background: var(--card); border-right: 1px solid var(--border); padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+.section-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+
+.input-group { display: flex; flex-direction: column; gap: 5px; }
+.input-group label { font-size: 12px; color: var(--muted); }
+input[type=text], input[type=password], input[type=number], select {
+  width: 100%; padding: 8px 10px; font-size: 13px; font-family: var(--sans);
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  color: var(--text); outline: none; transition: border-color .15s;
+}
+input:focus, select:focus { border-color: var(--navy2); background: #fff; }
+input[type=password] { font-family: var(--mono); font-size: 12px; }
+
+.year-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.year-row span { font-size: 12px; color: var(--muted); text-align: center; }
+
+.sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.sheet-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all .12s; }
+.sheet-item:hover { border-color: var(--navy2); background: #EFF6FF; }
+.sheet-item.on { border-color: var(--navy2); background: #EFF6FF; }
+.sheet-item input { width: 13px; height: 13px; accent-color: var(--navy); cursor: pointer; flex-shrink: 0; }
+.sheet-item label { font-size: 11px; color: var(--text); cursor: pointer; line-height: 1.3; }
+
+.divider { height: 1px; background: var(--border); }
+
+.btn-run { width: 100%; padding: 11px; font-size: 14px; font-weight: 600; font-family: var(--sans); background: var(--navy); color: #fff; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: opacity .15s; letter-spacing: -0.2px; }
+.btn-run:hover { opacity: .88; }
+.btn-run:disabled { opacity: .5; cursor: not-allowed; }
+.btn-run svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.5; flex-shrink: 0; }
+
+.quick-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.qbtn { padding: 7px 8px; font-size: 12px; font-family: var(--sans); border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); cursor: pointer; text-align: left; transition: all .12s; display: flex; align-items: center; gap: 5px; }
+.qbtn:hover { border-color: var(--navy2); background: #EFF6FF; color: var(--navy); }
+.qbtn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--navy2); flex-shrink: 0; }
+
+/* ── 메인 ── */
+.main { padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+/* 상태 카드 */
+.status-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; }
+.stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.stat-val { font-size: 20px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* 로그 패널 */
+.log-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.log-header { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.log-title { font-size: 12px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; }
+.log-badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; background: #EFF6FF; color: var(--navy2); font-weight: 600; }
+.log-clear { font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.log-clear:hover { background: var(--bg); }
+.log-body { padding: .75rem 1rem; min-height: 200px; max-height: 320px; overflow-y: auto; font-family: var(--mono); font-size: 12px; line-height: 1.8; }
+.log-body:empty::before { content: '조회 버튼을 누르면 여기에 진행 상황이 표시됩니다.'; color: var(--muted); font-family: var(--sans); }
+.log-info  { color: var(--text); }
+.log-ok    { color: var(--success); }
+.log-warn  { color: var(--warn); }
+.log-err   { color: var(--danger); }
+.log-dim   { color: var(--muted); }
+
+/* 프로그레스 */
+.progress-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; display: none; }
+.progress-wrap.show { display: block; }
+.progress-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.progress-label { font-size: 13px; font-weight: 500; }
+.progress-pct { font-size: 13px; font-family: var(--mono); color: var(--navy2); font-weight: 600; }
+.progress-bar { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--navy), var(--accent)); border-radius: 99px; transition: width .3s ease; width: 0%; }
+
+/* 결과 카드 */
+.result-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; display: none; }
+.result-card.show { display: block; }
+.result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+.result-icon { width: 36px; height: 36px; border-radius: 8px; background: #D1FAE5; display: flex; align-items: center; justify-content: center; }
+.result-icon svg { width: 18px; height: 18px; stroke: var(--success); stroke-width: 2.5; fill: none; }
+.result-title { font-size: 14px; font-weight: 600; }
+.result-sub { font-size: 12px; color: var(--muted); }
+.result-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1rem; }
+.rs { background: var(--bg); border-radius: 7px; padding: .6rem .8rem; }
+.rs-label { font-size: 10px; color: var(--muted); }
+.rs-val { font-size: 14px; font-weight: 600; font-family: var(--mono); color: var(--navy); }
+.btn-download { width: 100%; padding: 10px; font-size: 13px; font-weight: 600; font-family: var(--sans); background: var(--success); color: #fff; border: none; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: opacity .15s; }
+.btn-download:hover { opacity: .88; }
+.btn-download svg { width: 15px; height: 15px; stroke: #fff; stroke-width: 2.5; fill: none; }
+
+/* 빈 상태 */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 3rem; color: var(--muted); text-align: center; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.empty-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--bg); display: flex; align-items: center; justify-content: center; }
+.empty-icon svg { width: 24px; height: 24px; stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.empty-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.empty-desc { font-size: 12px; line-height: 1.6; }
+
+/* 반응형 */
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
+  .status-cards { grid-template-columns: repeat(2, 1fr); }
+  .result-stats { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-logo">
+      <svg viewBox="0 0 24 24"><path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"/></svg>
+    </div>
+    <div>
+      <div class="topbar-title">DART 재무제표 에이전트</div>
+      <div class="topbar-sub">finagent101.pages.dev</div>
+    </div>
+  </div>
+  <div class="status-dot" id="workerDot" title="Worker 연결 상태"></div>
+</div>
+
+<div class="layout">
+  <!-- 사이드바 -->
+  <div class="sidebar">
+    <div>
+      <div class="section-label">DART API 키</div>
+      <div class="input-group">
+        <div style="display:flex;gap:6px">
+          <input type="password" id="apiKey" placeholder="API 키 입력 (40자리)" style="flex:1"/>
+          <button onclick="toggleKey()" style="padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px" id="eyeBtn">👁</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">
+          <a href="https://opendart.fss.or.kr" target="_blank" style="color:var(--navy2)">opendart.fss.or.kr</a>에서 무료 발급
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div>
+      <div class="quick-label">빠른 선택</div>
+      <div class="quick-grid">
+        <button class="qbtn" onclick="quick('삼성전자')"><span class="qbtn-dot"></span>삼성전자</button>
+        <button class="qbtn" onclick="quick('SK하이닉스')"><span class="qbtn-dot"></span>SK하이닉스</button>
+        <button class="qbtn" onclick="quick('현대자동차')"><span class="qbtn-dot"></span>현대자동차</button>
+        <button class="qbtn" onclick="quick('카카오')"><span class="qbtn-dot"></span>카카오</button>
+        <button class="qbtn" onclick="quick('LG전자')"><span class="qbtn-dot"></span>LG전자</button>
+        <button class="qbtn" onclick="quick('NAVER')"><span class="qbtn-dot"></span>NAVER</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">회사명</div>
+      <input type="text" id="company" placeholder="예: 삼성전자, 미래엔..." />
+    </div>
+
+    <div>
+      <div class="section-label">연도 범위</div>
+      <div class="year-row">
+        <select id="yearFrom"></select>
+        <span>~</span>
+        <select id="yearTo"></select>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">재무 기준</div>
+      <select id="fsDiv">
+        <option value="CFS">연결 재무제표 (CFS)</option>
+        <option value="OFS">별도 재무제표 (OFS)</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-label">생성 시트</div>
+      <div class="sheet-grid" id="sheetGrid">
+        <div class="sheet-item on" onclick="toggleSheet(this)"><input type="checkbox" checked data-sheet="요약"><label>⓪ 요약</label></div>
+        <div class="sheet-item on" onclick="toggleSheet(this)"><input type="checkbox" checked data-sheet="손익계산서"><label>① 손익</label></div>
+        <div class="sheet-item on" onclick="toggleSheet(this)"><input type="checkbox" checked data-sheet="재무상태표"><label>② 재무</label></div>
+        <div class="sheet-item on" onclick="toggleSheet(this)"><input type="checkbox" checked data-sheet="현금흐름표"><label>③ 현금</label></div>
+        <div class="sheet-item on" onclick="toggleSheet(this)"><input type="checkbox" checked data-sheet="수익성분석"><label>④ 수익성</label></div>
+      </div>
+    </div>
+
+    <button class="btn-run" id="runBtn" onclick="run()">
+      <svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>
+      엑셀 생성하기
+    </button>
+  </div>
+
+  <!-- 메인 -->
+  <div class="main">
+    <!-- 상태 카드 -->
+    <div class="status-cards">
+      <div class="stat-card">
+        <div class="stat-label">Worker 상태</div>
+        <div class="stat-val" id="workerStatus" style="font-size:14px;color:var(--warn)">확인 중...</div>
+        <div class="stat-sub">dart-proxy</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">수집 연도</div>
+        <div class="stat-val" id="statYears">—</div>
+        <div class="stat-sub">개 연도</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">수집 계정수</div>
+        <div class="stat-val" id="statAccounts">—</div>
+        <div class="stat-sub">총 계정과목</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">소요 시간</div>
+        <div class="stat-val" id="statTime">—</div>
+        <div class="stat-sub">초</div>
+      </div>
+    </div>
+
+    <!-- 프로그레스 -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-top">
+        <div class="progress-label" id="progressLabel">준비 중...</div>
+        <div class="progress-pct" id="progressPct">0%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <!-- 결과 카드 -->
+    <div class="result-card" id="resultCard">
+      <div class="result-header">
+        <div class="result-icon">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="result-title" id="resultTitle">완료</div>
+          <div class="result-sub" id="resultSub"></div>
+        </div>
+      </div>
+      <div class="result-stats">
+        <div class="rs"><div class="rs-label">회사</div><div class="rs-val" id="rs1">—</div></div>
+        <div class="rs"><div class="rs-label">기간</div><div class="rs-val" id="rs2">—</div></div>
+        <div class="rs"><div class="rs-label">시트</div><div class="rs-val" id="rs3">—</div></div>
+      </div>
+      <button class="btn-download" id="downloadBtn">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        엑셀 다운로드
+      </button>
+    </div>
+
+    <!-- 로그 -->
+    <div class="log-panel">
+      <div class="log-header">
+        <div class="log-title">
+          <svg style="width:13px;height:13px;stroke:var(--text);stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          실행 로그
+          <span class="log-badge" id="logCount">0</span>
+        </div>
+        <button class="log-clear" onclick="clearLog()">지우기</button>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+
+    <!-- 빈 상태 (초기) -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </div>
+      <div class="empty-title">아직 조회된 데이터가 없습니다</div>
+      <div class="empty-desc">왼쪽에서 회사명과 연도를 설정하고<br>엑셀 생성하기를 눌러주세요</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const PROXY = 'https://dart-proxy.dhtjdwn511.workers.dev';
+const DART  = 'https://opendart.fss.or.kr/api';
+
+// ── 연도 셀렉트 초기화
+const cur = new Date().getFullYear();
+['yearFrom','yearTo'].forEach(id => {
+  const sel = document.getElementById(id);
+  for (let y = cur; y >= 2000; y--) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y + '년';
+    if (id === 'yearFrom' && y === cur - 10) o.selected = true;
+    if (id === 'yearTo'   && y === cur - 1)  o.selected = true;
+    sel.appendChild(o);
+  }
+});
+
+// ── Worker 상태 확인
+async function checkWorker() {
+  try {
+    const test = `${PROXY}/?url=${encodeURIComponent(DART + '/json/test')}`;
+    await fetch(test, { signal: AbortSignal.timeout(4000) });
+    document.getElementById('workerStatus').textContent = '연결됨 ✓';
+    document.getElementById('workerStatus').style.color = 'var(--success)';
+    document.getElementById('workerDot').style.background = '#10B981';
+  } catch {
+    document.getElementById('workerStatus').textContent = '대기 중';
+    document.getElementById('workerStatus').style.color = 'var(--warn)';
+  }
+}
+checkWorker();
+
+// ── UI 헬퍼
+let logLines = 0;
+function log(msg, type='info') {
+  const el = document.getElementById('logBody');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('logCount').textContent = ++logLines;
+}
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '';
+  logLines = 0;
+  document.getElementById('logCount').textContent = 0;
+}
+function setProgress(label, pct) {
+  document.getElementById('progressWrap').classList.add('show');
+  document.getElementById('progressLabel').textContent = label;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+function toggleKey() {
+  const inp = document.getElementById('apiKey');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+function toggleSheet(el) {
+  const cb = el.querySelector('input');
+  cb.checked = !cb.checked;
+  el.classList.toggle('on', cb.checked);
+}
+function quick(name) {
+  document.getElementById('company').value = name;
+  document.getElementById('yearFrom').value = cur - 10;
+  document.getElementById('yearTo').value = cur - 1;
+}
+
+// ── DART API 호출 (Worker 경유)
+async function dartGet(path, params) {
+  const q = new URLSearchParams(params).toString();
+  const dartUrl = `${DART}/${path}?${q}`;
+  const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
+  const r = await fetch(proxyUrl);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+
+async function getCorpCode(apiKey, company) {
+  log(`기업코드 조회 중: "${company}"`, 'info');
+  const dartUrl = `${DART}/corpCode.xml?crtfc_key=${apiKey}`;
+  const proxyUrl = `${PROXY}/?url=${encodeURIComponent(dartUrl)}`;
+  const r = await fetch(proxyUrl);
+  if (!r.ok) throw new Error('기업코드 ZIP 다운로드 실패');
+
+  const buf = await r.arrayBuffer();
+  const zip = new Uint8Array(buf);
+
+  // ZIP 파싱 (내장 DecompressionStream 사용)
+  const ds = new DecompressionStream('deflate-raw');
+  // XLSX.js의 ZIP 파서 활용
+  const wb = XLSX.read(buf, { type: 'array' });
+  // wb로는 안됨 → JSZip 없이 직접 ZIP 파싱
+  // 대신 DART 검색 API 사용
+  throw new Error('__USE_SEARCH__');
+}
+
+async function searchCorpCode(apiKey, company) {
+  // DART 기업검색 API
+  const r = await dartGet('corpSearch.json', {
+    crtfc_key: apiKey,
+    corp_name: company,
+    page_count: 10
+  });
+  const data = await r.json();
+  if (data.status !== '000') throw new Error(data.message || '기업 검색 실패');
+  const list = data.corp_list || [];
+  if (list.length === 0) throw new Error(`"${company}" 검색 결과 없음`);
+  // 상장사 우선, 정확히 일치 우선
+  const exact = list.find(c => c.corp_name === company && c.stock_code);
+  const listed = list.find(c => c.stock_code);
+  const chosen = exact || listed || list[0];
+  log(`기업 확인: ${chosen.corp_name} (코드: ${chosen.corp_code}, 종목: ${chosen.stock_code || '비상장'})`, 'ok');
+  return chosen.corp_code;
+}
+
+async function fetchYear(apiKey, corpCode, year, fsDiv) {
+  const r = await dartGet('fnlttSinglAcntAll.json', {
+    crtfc_key: apiKey,
+    corp_code: corpCode,
+    bsns_year: String(year),
+    reprt_code: '11011',
+    fs_div: fsDiv
+  });
+  const data = await r.json();
+  if (data.status === '013' && fsDiv === 'CFS') {
+    // 연결 없으면 별도 재시도
+    log(`  ${year}: 연결 없음 → 별도 재시도`, 'warn');
+    return fetchYear(apiKey, corpCode, year, 'OFS');
+  }
+  if (data.status !== '000') {
+    log(`  ${year}: 조회 실패 (${data.message || data.status})`, 'warn');
+    return {};
+  }
+  const result = {};
+  for (const item of (data.list || [])) {
+    const nm = (item.account_nm || '').trim().replace(/\s+/g, '');
+    const raw = (item.thstrm_amount || '').replace(/,/g, '').trim();
+    const val = parseFloat(raw);
+    if (!isNaN(val)) result[nm] = Math.round(val / 1e8 * 10) / 10; // 억원
+  }
+  return result;
+}
+
+// ── 계정 매핑
+const IS_MAP = {
+  '매출액':           ['매출액','수익(매출액)','영업수익'],
+  '매출원가':         ['매출원가'],
+  '매출총이익':       ['매출총이익'],
+  '판매비와관리비':   ['판매비와관리비','판매비및관리비'],
+  '영업이익':         ['영업이익(손실)','영업이익'],
+  '이자수익':         ['이자수익'],
+  '이자비용':         ['이자비용'],
+  '법인세전순이익':   ['법인세비용차감전순이익','법인세차감전순이익'],
+  '법인세비용':       ['법인세비용'],
+  '당기순이익':       ['당기순이익(손실)','당기순이익'],
+  '지배순이익':       ['지배기업의소유주에게귀속되는당기순이익','지배주주지분순이익'],
+};
+const BS_MAP = {
+  '자산총계':         ['자산총계'],
+  '유동자산':         ['유동자산'],
+  '현금및현금성자산': ['현금및현금성자산'],
+  '단기금융상품':     ['단기금융상품','단기투자자산'],
+  '매출채권':         ['매출채권'],
+  '재고자산':         ['재고자산'],
+  '비유동자산':       ['비유동자산'],
+  '유형자산':         ['유형자산'],
+  '부채총계':         ['부채총계'],
+  '유동부채':         ['유동부채'],
+  '비유동부채':       ['비유동부채'],
+  '자본총계':         ['자본총계'],
+  '지배기업지분':     ['지배기업의소유주에게귀속되는자본','지배주주지분'],
+  '비지배지분':       ['비지배지분'],
+  '이익잉여금':       ['이익잉여금'],
+};
+const CF_MAP = {
+  '영업활동':         ['영업활동으로인한현금흐름','영업활동현금흐름'],
+  '투자활동':         ['투자활동으로인한현금흐름','투자활동현금흐름'],
+  '재무활동':         ['재무활동으로인한현금흐름','재무활동현금흐름'],
+  '기말현금':         ['기말의현금및현금성자산','기말현금및현금성자산'],
+  'CAPEX':            ['유형자산의취득','유형자산취득'],
+};
+
+function find(yd, keys) {
+  for (const k of keys) {
+    const kc = k.replace(/\s+/g,'');
+    for (const [nm, val] of Object.entries(yd)) {
+      if (nm.includes(kc)) return val;
+    }
+  }
+  return null;
+}
+function row(data, years, keys) { return years.map(y => find(data[y]||{}, keys)); }
+function ratio(a, b) { return (a != null && b && b !== 0) ? Math.round(a/b*10000)/10000 : null; }
+
+// ── 엑셀 스타일 상수
+const C = {
+  TITLE:'1F4E79', HEADER:'2E75B6', SECTION:'305496',
+  EMPH:'F2F2F2', RATIO:'D9D9D9', LIGHT:'DEEAF1',
+  WHITE:'FFFFFF', BLACK:'000000', GRAY:'595959', BLUE:'1F497D'
+};
+const FN = '#,##0.0;\\(#,##0.0\\);"-"';
+const FP = '0.0%;\\(0.0%\\);"-"';
+
+function sty(ws, r, c, val, {bg, fc='000000', bold=false, ha='left', fmt=null}={}) {
+  const cell = { v: val, t: typeof val === 'number' ? 'n' : 's' };
+  if (fmt) cell.z = fmt;
+  if (!ws['!cells']) ws['!cells'] = {};
+  const addr = XLSX.utils.encode_cell({r:r-1, c:c-1});
+  ws[addr] = cell;
+  // 스타일 (SheetJS CE는 스타일 제한적 — 값만 넣고 서식 적용)
+  ws[addr].s = {
+    fill: bg ? { fgColor: { rgb: bg } } : undefined,
+    font: { name:'Arial', sz:10, bold, color: { rgb: fc } },
+    alignment: { horizontal: ha, vertical:'center' },
+    numFmt: fmt || undefined
+  };
+  if (!ws['!ref']) ws['!ref'] = addr;
+  else {
+    const ref = XLSX.utils.decode_range(ws['!ref']);
+    const cur = XLSX.utils.decode_cell(addr);
+    ref.e.r = Math.max(ref.e.r, cur.r);
+    ref.e.c = Math.max(ref.e.c, cur.c);
+    ws['!ref'] = XLSX.utils.encode_range(ref);
+  }
+}
+
+function buildSheet(years, data, company, type) {
+  const ws = {};
+  const N = years.length;
+  ws['!cols'] = [{wch:28}, ...Array(N).fill({wch:11})];
+  ws['!merges'] = [];
+
+  let r = 1;
+  const titles = {
+    summary: `${company}  핵심 재무 요약  │  FY${years[0]}–FY${years[N-1]}  │  단위: 억원`,
+    is: `${company}  연결 손익계산서  │  FY${years[0]}–FY${years[N-1]}  │  단위: 억원`,
+    bs: `${company}  연결 재무상태표  │  FY${years[0]}–FY${years[N-1]}  │  단위: 억원`,
+    cf: `${company}  연결 현금흐름표  │  FY${years[0]}–FY${years[N-1]}  │  단위: 억원`,
+    prof: `${company}  수익성 분석  │  FY${years[0]}–FY${years[N-1]}  │  비율/배수`,
+  };
+
+  // 타이틀
+  sty(ws, r, 1, titles[type], {bg:C.TITLE, fc:C.WHITE, bold:true});
+  ws['!merges'].push({s:{r:r-1,c:0}, e:{r:r-1,c:N}});
+  ws['!rows'] = ws['!rows'] || [];
+  ws['!rows'][r-1] = {hpt:22};
+  r++;
+
+  // 연도 헤더
+  sty(ws, r, 1, '구  분', {bg:C.HEADER, fc:C.WHITE, bold:true, ha:'center'});
+  years.forEach((y, i) => sty(ws, r, i+2, String(y), {bg:C.HEADER, fc:C.WHITE, bold:true, ha:'center'}));
+  ws['!rows'][r-1] = {hpt:18}; r++;
+
+  // 데이터 함수
+  const sec = (label) => {
+    sty(ws, r, 1, label, {bg:C.SECTION, fc:C.WHITE, bold:true});
+    ws['!merges'].push({s:{r:r-1,c:0}, e:{r:r-1,c:N}});
+    ws['!rows'][r-1] = {hpt:16}; r++;
+  };
+  const drow = (label, vals, st='norm', fmt=FN) => {
+    const map = {
+      emph:  {lbg:C.EMPH,  lfc:C.BLACK, lb:true,  nbg:C.EMPH,  nfc:C.BLUE, nb:true},
+      norm:  {lbg:C.WHITE, lfc:C.BLACK, lb:false, nbg:C.WHITE, nfc:C.BLACK,nb:false},
+      ratio: {lbg:C.RATIO, lfc:C.GRAY,  lb:false, nbg:C.RATIO, nfc:C.GRAY, nb:false},
+      sub:   {lbg:C.WHITE, lfc:C.GRAY,  lb:false, nbg:C.WHITE, nfc:C.GRAY, nb:false},
+      hi:    {lbg:C.LIGHT, lfc:C.BLACK, lb:true,  nbg:C.LIGHT, nfc:C.BLACK,nb:true},
+    };
+    const s = map[st];
+    sty(ws, r, 1, label, {bg:s.lbg, fc:s.lfc, bold:s.lb});
+    vals.forEach((v, i) => sty(ws, r, i+2, v, {bg:s.nbg, fc:s.nfc, bold:s.nb, ha:'right', fmt}));
+    ws['!rows'][r-1] = {hpt:15}; r++;
+  };
+  const blank = () => { ws['!rows'][r-1] = {hpt:6}; r++; };
+  const note = (txt) => {
+    sty(ws, r, 1, txt, {fc:C.GRAY});
+    ws['!rows'][r-1] = {hpt:14}; r++;
+  };
+
+  const rev  = row(data, years, IS_MAP['매출액']);
+  const gp   = row(data, years, IS_MAP['매출총이익']);
+  const op   = row(data, years, IS_MAP['영업이익']);
+  const ni   = row(data, years, IS_MAP['당기순이익']);
+  const ta   = row(data, years, BS_MAP['자산총계']);
+  const tl   = row(data, years, BS_MAP['부채총계']);
+  const te   = row(data, years, BS_MAP['자본총계']);
+  const cash = row(data, years, BS_MAP['현금및현금성자산']);
+  const stfi = row(data, years, BS_MAP['단기금융상품']);
+  const ocf  = row(data, years, CF_MAP['영업활동']);
+  const capx = row(data, years, CF_MAP['CAPEX']);
+
+  const gpm = rev.map((v,i) => ratio(gp[i], v));
+  const opm = rev.map((v,i) => ratio(op[i], v));
+  const npm = rev.map((v,i) => ratio(ni[i], v));
+  const der = te.map((v,i)  => ratio(tl[i], v));
+  const roe = te.map((v,i)  => ratio(ni[i], v));
+  const roa = ta.map((v,i)  => ratio(ni[i], v));
+  const cashTot = cash.map((v,i) => v != null || stfi[i] != null ? (v||0)+(stfi[i]||0) : null);
+  const fcf = ocf.map((v,i) => v != null ? v + (capx[i]||0) : null);
+
+  if (type === 'summary') {
+    sec('【 손 익 계 산 서 】');
+    drow('매출액', rev, 'emph');
+    drow('  매출총이익', gp);
+    drow('  매출총이익률', gpm, 'ratio', FP);
+    drow('  판매비와관리비', row(data, years, IS_MAP['판매비와관리비']));
+    drow('영업이익', op, 'emph');
+    drow('  영업이익률', opm, 'ratio', FP);
+    drow('당기순이익', ni, 'emph');
+    drow('  당기순이익률', npm, 'ratio', FP);
+    drow('  지배기업지분순이익', row(data, years, IS_MAP['지배순이익']), 'sub');
+    blank();
+    sec('【 재 무 상 태 표 】');
+    drow('자산총계', ta, 'emph');
+    drow('  현금및현금성자산', cash, 'sub');
+    drow('  단기금융상품', stfi, 'sub');
+    drow('  현금+단기금융 합계', cashTot, 'hi');
+    drow('부채총계', tl);
+    drow('  부채비율', der, 'ratio', FP);
+    drow('자본총계', te, 'emph');
+    blank();
+    sec('【 수 익 성 지 표 】');
+    drow('영업이익률', opm, 'norm', FP);
+    drow('ROE', roe, 'norm', FP);
+    drow('ROA', roa, 'norm', FP);
+  } else if (type === 'is') {
+    sec('【 매 출 】');
+    drow('매출액', rev, 'emph');
+    drow('  매출원가', row(data, years, IS_MAP['매출원가']));
+    drow('매출총이익', gp, 'emph');
+    drow('  매출총이익률', gpm, 'ratio', FP);
+    blank();
+    sec('【 영 업 손 익 】');
+    drow('  판매비와관리비', row(data, years, IS_MAP['판매비와관리비']));
+    drow('영업이익', op, 'emph');
+    drow('  영업이익률', opm, 'ratio', FP);
+    blank();
+    sec('【 영 업 외 손 익 】');
+    drow('  이자수익', row(data, years, IS_MAP['이자수익']), 'sub');
+    drow('  이자비용', row(data, years, IS_MAP['이자비용']), 'sub');
+    blank();
+    sec('【 당 기 순 손 익 】');
+    drow('법인세비용차감전순이익', row(data, years, IS_MAP['법인세전순이익']));
+    drow('  법인세비용', row(data, years, IS_MAP['법인세비용']), 'sub');
+    drow('당기순이익', ni, 'emph');
+    drow('  당기순이익률', npm, 'ratio', FP);
+    drow('  지배기업지분 귀속', row(data, years, IS_MAP['지배순이익']), 'sub');
+  } else if (type === 'bs') {
+    sec('◈  자  산');
+    drow('유동자산', row(data, years, BS_MAP['유동자산']));
+    drow('  현금및현금성자산', cash, 'sub');
+    drow('  단기금융상품', stfi, 'sub');
+    drow('  매출채권', row(data, years, BS_MAP['매출채권']), 'sub');
+    drow('  재고자산', row(data, years, BS_MAP['재고자산']), 'sub');
+    drow('비유동자산', row(data, years, BS_MAP['비유동자산']));
+    drow('  유형자산', row(data, years, BS_MAP['유형자산']), 'sub');
+    drow('자산총계', ta, 'emph');
+    blank();
+    sec('◈  부  채');
+    drow('유동부채', row(data, years, BS_MAP['유동부채']));
+    drow('비유동부채', row(data, years, BS_MAP['비유동부채']));
+    drow('부채총계', tl, 'emph');
+    drow('  부채비율', der, 'ratio', FP);
+    blank();
+    sec('◈  자  본');
+    drow('지배기업 소유주 귀속 자본', row(data, years, BS_MAP['지배기업지분']));
+    drow('  이익잉여금', row(data, years, BS_MAP['이익잉여금']), 'sub');
+    drow('비지배지분', row(data, years, BS_MAP['비지배지분']));
+    drow('자본총계', te, 'emph');
+    blank();
+    drow('현금+단기금융 합계', cashTot, 'hi');
+  } else if (type === 'cf') {
+    sec('【 영 업 활 동 】');
+    drow('영업활동 현금흐름', ocf, 'emph');
+    blank();
+    sec('【 투 자 활 동 】');
+    drow('투자활동 현금흐름', row(data, years, CF_MAP['투자활동']), 'emph');
+    drow('  유형자산 취득 (CAPEX)', capx, 'sub');
+    blank();
+    sec('【 재 무 활 동 】');
+    drow('재무활동 현금흐름', row(data, years, CF_MAP['재무활동']), 'emph');
+    blank();
+    sec('【 기 말 현 금 】');
+    drow('기말 현금및현금성자산', row(data, years, CF_MAP['기말현금']), 'emph');
+    blank();
+    sec('【 FCF 】');
+    drow('FCF = 영업활동 + CAPEX', fcf, 'hi');
+  } else if (type === 'prof') {
+    const revG = rev.map((v,i) => i===0 ? null : ratio(rev[i]-rev[i-1], rev[i-1]));
+    sec('【 규 모 지 표 (억원) 】');
+    drow('매출액', rev, 'emph');
+    drow('  전년비 성장률', revG, 'ratio', FP);
+    drow('영업이익', op, 'emph');
+    drow('당기순이익', ni, 'emph');
+    blank();
+    sec('【 마 진 지 표 】');
+    drow('매출총이익률 (GPM)', gpm, 'norm', FP);
+    drow('영업이익률 (OPM)', opm, 'emph', FP);
+    drow('당기순이익률 (NPM)', npm, 'norm', FP);
+    blank();
+    sec('【 자 본 수 익 성 】');
+    drow('ROE (자기자본이익률)', roe, 'emph', FP);
+    drow('ROA (총자산이익률)', roa, 'norm', FP);
+    blank();
+    sec('【 재 무 건 전 성 】');
+    drow('부채비율 (부채/자본)', der, 'norm', FP);
+    blank();
+    sec('【 현 금 창 출 】');
+    drow('영업활동 현금흐름', ocf);
+    drow('FCF (자유현금흐름)', fcf, 'hi');
+  }
+
+  note(`주) DART 사업보고서 | ${company} 연결 기준 | 단위: 억원`);
+  return ws;
+}
+
+// ── 메인 실행
+let excelBlob = null;
+async function run() {
+  const apiKey  = document.getElementById('apiKey').value.trim();
+  const company = document.getElementById('company').value.trim();
+  const yearFrom = parseInt(document.getElementById('yearFrom').value);
+  const yearTo   = parseInt(document.getElementById('yearTo').value);
+  const fsDiv    = document.getElementById('fsDiv').value;
+  const sheets   = [...document.querySelectorAll('#sheetGrid input:checked')].map(c => c.dataset.sheet);
+
+  if (!apiKey)  { alert('DART API 키를 입력해 주세요.'); return; }
+  if (!company) { alert('회사명을 입력해 주세요.'); return; }
+  if (yearFrom > yearTo) { alert('연도 범위를 확인해 주세요.'); return; }
+  if (sheets.length === 0) { alert('시트를 1개 이상 선택해 주세요.'); return; }
+
+  const years = Array.from({length: yearTo - yearFrom + 1}, (_, i) => yearFrom + i);
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  document.getElementById('resultCard').classList.remove('show');
+  document.getElementById('statYears').textContent = years.length;
+  excelBlob = null;
+
+  const t0 = Date.now();
+  log(`▶ 시작: ${company} | ${yearFrom}~${yearTo} | ${fsDiv}`, 'info');
+
+  try {
+    // corp_code 조회
+    setProgress('기업코드 조회 중...', 5);
+    const corpCode = await searchCorpCode(apiKey, company);
+
+    // 연도별 데이터 수집
+    const data = {};
+    let totalAccounts = 0;
+    for (let i = 0; i < years.length; i++) {
+      const y = years[i];
+      const pct = Math.round(10 + (i / years.length) * 70);
+      setProgress(`${y}년 수집 중... (${i+1}/${years.length})`, pct);
+      log(`  ${y}년 수집 중...`, 'dim');
+      data[y] = await fetchYear(apiKey, corpCode, y, fsDiv);
+      const cnt = Object.keys(data[y]).length;
+      totalAccounts += cnt;
+      log(`  ${y}: ${cnt}개 계정 수집 완료`, 'ok');
+      await new Promise(r => setTimeout(r, 200));
+    }
+    document.getElementById('statAccounts').textContent = totalAccounts.toLocaleString();
+
+    // 엑셀 생성
+    setProgress('엑셀 파일 생성 중...', 85);
+    log('엑셀 생성 중...', 'info');
+
+    const wb = XLSX.utils.book_new();
+    const sheetMap = {
+      '요약': ['summary', '⓪요약'],
+      '손익계산서': ['is', '①손익계산서'],
+      '재무상태표': ['bs', '②재무상태표'],
+      '현금흐름표': ['cf', '③현금흐름표'],
+      '수익성분석': ['prof', '④수익성분석'],
+    };
+    for (const s of sheets) {
+      if (sheetMap[s]) {
+        const [type, name] = sheetMap[s];
+        const ws = buildSheet(years, data, company, type);
+        XLSX.utils.book_append_sheet(wb, ws, name);
+        log(`  시트 생성: ${name}`, 'ok');
+      }
+    }
+
+    const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
+    excelBlob = new Blob([wbOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    document.getElementById('statTime').textContent = elapsed;
+    setProgress('완료!', 100);
+    log(`✅ 완료! (${elapsed}초)`, 'ok');
+
+    // 결과 카드 표시
+    document.getElementById('resultCard').classList.add('show');
+    document.getElementById('resultTitle').textContent = `${company} 재무제표 완성`;
+    document.getElementById('resultSub').textContent = `${years.length}개 연도 │ ${totalAccounts.toLocaleString()}개 계정 수집`;
+    document.getElementById('rs1').textContent = company;
+    document.getElementById('rs2').textContent = `${yearFrom}~${yearTo}`;
+    document.getElementById('rs3').textContent = sheets.length + '개';
+
+    document.getElementById('downloadBtn').onclick = () => {
+      const url = URL.createObjectURL(excelBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${company}_재무제표_${yearFrom}-${yearTo}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+  } catch (e) {
+    log(`❌ 오류: ${e.message}`, 'err');
+    setProgress('오류 발생', 0);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
