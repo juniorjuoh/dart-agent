@@ -225,6 +225,17 @@ input[type=password] { font-family: var(--mono); font-size: 12px; }
     </div>
 
     <div>
+      <div class="section-label">보고서 종류</div>
+      <select id="reprtCode">
+        <option value="11011">사업보고서 (연간)</option>
+        <option value="11012">반기보고서</option>
+        <option value="11013">1분기보고서</option>
+        <option value="11014">3분기보고서</option>
+        <option value="audit">감사보고서 (비상장 포함)</option>
+      </select>
+    </div>
+
+    <div>
       <div class="section-label">재무 기준</div>
       <select id="fsDiv">
         <option value="CFS">연결 재무제표 (CFS)</option>
@@ -586,7 +597,31 @@ async function searchCorpCode(apiKey, company) {
   });
 }
 
-async function fetchYear(apiKey, corpCode, year, fsDiv) {
+// ── 감사보고서 기반 재무데이터 수집
+async function fetchYearAudit(apiKey, corpCode, year, fsDiv) {
+  // 1. 해당 연도 감사보고서 공시 목록 조회
+  const listR = await dartGet('list.json', {
+    crtfc_key: apiKey,
+    corp_code: corpCode,
+    pblntf_detail_ty: 'A001',  // 감사보고서
+    bgn_de: String(year) + '0101',
+    end_de: String(year + 1) + '0630',
+    page_count: 10,
+  });
+  const listData = await listR.json();
+
+  if (listData.status !== '000' || !listData.list?.length) {
+    // 감사보고서 없으면 사업보고서로 폴백
+    log('  ' + year + ': 감사보고서 없음 → 사업보고서로 재시도', 'warn');
+    return fetchYear(apiKey, corpCode, year, fsDiv, '11011');
+  }
+
+  // 가장 최근 공시 선택
+  const rcp = listData.list[0];
+  log('  ' + year + ': 감사보고서 발견 (' + rcp.rcept_dt + ' · ' + rcp.report_nm + ')', 'dim');
+
+  // 2. fnlttSinglAcntAll로 재무데이터 조회 (감사보고서 rcept_no 기반)
+  // DART API는 감사보고서도 동일 재무제표 API로 조회 가능 (사업보고서 코드 사용)
   const r = await dartGet('fnlttSinglAcntAll.json', {
     crtfc_key: apiKey,
     corp_code: corpCode,
@@ -595,10 +630,49 @@ async function fetchYear(apiKey, corpCode, year, fsDiv) {
     fs_div: fsDiv
   });
   const data = await r.json();
+
+  // 데이터 없으면 별도 재시도
+  if (data.status === '013' && fsDiv === 'CFS') {
+    log('  ' + year + ': 연결 없음 → 별도 재시도', 'warn');
+    return fetchYearAudit(apiKey, corpCode, year, 'OFS');
+  }
+  if (data.status !== '000') {
+    log('  ' + year + ': 조회 실패 (' + (data.message || data.status) + ')', 'warn');
+    return {};
+  }
+
+  const result = {};
+  const list = data.list || [];
+  for (const item of list) {
+    const nm  = (item.account_nm || '').trim().replace(/\s+/g, '');
+    const sj  = (item.sj_div || '').trim();
+    const raw = (item.thstrm_amount || '').replace(/,/g, '').trim();
+    const val = parseFloat(raw);
+    if (!isNaN(val)) {
+      result[nm] = Math.round(val / 1e8 * 10) / 10;
+      result[sj + '_' + nm] = Math.round(val / 1e8 * 10) / 10;
+    }
+  }
+  return result;
+}
+
+async function fetchYear(apiKey, corpCode, year, fsDiv, reprtCode='11011') {
+  // 감사보고서는 별도 API 사용
+  if (reprtCode === 'audit') {
+    return fetchYearAudit(apiKey, corpCode, year, fsDiv);
+  }
+  const r = await dartGet('fnlttSinglAcntAll.json', {
+    crtfc_key: apiKey,
+    corp_code: corpCode,
+    bsns_year: String(year),
+    reprt_code: reprtCode || '11011',
+    fs_div: fsDiv
+  });
+  const data = await r.json();
   if (data.status === '013' && fsDiv === 'CFS') {
     // 연결 없으면 별도 재시도
     log(`  ${year}: 연결 없음 → 별도 재시도`, 'warn');
-    return fetchYear(apiKey, corpCode, year, 'OFS');
+    return fetchYear(apiKey, corpCode, year, 'OFS', reprtCode);
   }
   if (data.status !== '000') {
     log(`  ${year}: 조회 실패 (${data.message || data.status})`, 'warn');
@@ -936,7 +1010,8 @@ async function run() {
   const company = document.getElementById('company').value.trim();
   const yearFrom = parseInt(document.getElementById('yearFrom').value);
   const yearTo   = parseInt(document.getElementById('yearTo').value);
-  const fsDiv    = document.getElementById('fsDiv').value;
+  const fsDiv     = document.getElementById('fsDiv').value;
+  const reprtCode = document.getElementById('reprtCode').value;
   const sheets   = [...document.querySelectorAll('#sheetGrid input:checked')].map(c => c.dataset.sheet);
 
   if (!apiKey)  { alert('DART API 키를 입력해 주세요.'); return; }
@@ -952,7 +1027,8 @@ async function run() {
   excelBlob = null;
 
   const t0 = Date.now();
-  log(`▶ 시작: ${company} | ${yearFrom}~${yearTo} | ${fsDiv}`, 'info');
+  const reprtLabel = {'11011':'사업보고서','11012':'반기보고서','11013':'1분기','11014':'3분기','audit':'감사보고서'}[reprtCode] || reprtCode;
+  log(`▶ 시작: ${company} | ${yearFrom}~${yearTo} | ${fsDiv} | ${reprtLabel}`, 'info');
 
   try {
     // corp_code 조회
